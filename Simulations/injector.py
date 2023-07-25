@@ -114,8 +114,22 @@ fitting_dia = {4 : .25, 6 : .375, 8 : .5, 10 : .675}
 
 # impinging SECTION
 
-
-
+def within_crossflow(fu_jet, list_ox_jets):
+    ans = False
+    for ox in list_ox_jets:
+        x_f = fu_jet.pos_vectors[-1][0]
+        x_o = ox.pos_vectors[-1][0]
+        y_f = fu_jet.pos_vectors[-1][1]
+        y_o = ox.pos_vectors[-1][1]
+        z_f = fu_jet.pos_vectors[-1][2]
+        z_o = ox.pos_vectors[-1][2]
+        
+        if (ox.dia[-1] / 2) <= np.abs( np.sqrt ( (x_f - x_o)**2 + (y_f - y_o)**2 + (z_f - z_o)**2)):
+            ans = ox
+            break
+    return ans
+        
+        
 class Jet:
     
     
@@ -144,6 +158,7 @@ class Jet:
             zs.append(pos[2])
 
         plt.plot(xs, ys, zs, color = color)
+
 
 def normalize(v):
     norm = np.linalg.norm(v)
@@ -353,7 +368,7 @@ class Sim:
             center_direction_vector = np.array([np.cos(psi) * np.cos(fu_inj_angle), np.sin(psi) * np.cos(fu_inj_angle), np.sin(fu_inj_angle)])
             plot_rotating_circle_3d(fu_inj_dia / 2, center_direction_vector, center_center_pt)
     
-    def create_scenario(self, chamber_dia_u, chamber_len_u, num_ox_core, cup_ring_dia_u, num_fu_per, cup_dia_u, fu_inj_angle_u, fu_inj_dia_u, ox_inj_dia_u, cup_inset_u, fu_vel_u, ox_vel_u):
+    def create_scenario(self, chamber_dia_u, chamber_len_u, num_ox_core, cup_ring_dia_u, num_fu_per, cup_dia_u, fu_inj_angle_u, fu_inj_dia_u, ox_inj_dia_u, cup_inset_u, fu_vel_u, ox_vel_u, ox_density, fu_density):
         # strip all of the inputted dimensions of their units
         self.chamber_dia = chamber_dia_u.magnitude
         self.chamber_len = chamber_len_u.magnitude
@@ -365,7 +380,10 @@ class Sim:
         self.cup_inset = cup_inset_u.magnitude
         self.num_ox_core = num_ox_core
         self.num_fu_per = num_fu_per
+        self.fu_density = fu_density
+        self.ox_density = ox_density
         
+
         self.fu_inj_angle = np.radians(fu_inj_angle)
         fu_vel = fu_vel_u.magnitude
         ox_vel = ox_vel_u.magnitude
@@ -401,7 +419,7 @@ class Sim:
         time = 0
         t_incr = 0.02 
         
-        while time < .03:
+        while time < .2:
             # start with the ox jets
             for ox in self.ox_list:
                 ox.pos_vectors.append(ox.vel_vectors[-1] * t_incr + ox.pos_vectors[-1])
@@ -411,7 +429,16 @@ class Sim:
             for fu in self.fu_list:
                 fu.pos_vectors.append(fu.vel_vectors[-1] * t_incr + fu.pos_vectors[-1])
                 fu.vel_vectors.append(np.array([0,0,0])  * t_incr + fu.vel_vectors[-1] ) # no acceleration or change in trajectory
+                if within_crossflow(fu, self.ox_list):
+                    ox_in_question = within_crossflow(fu, self.ox_list)
+                    delta_v = ox_in_question.vel_vectors[-1] - fu.vel_vectors[-1]
 
+                    num = Cd * self.ox_density * delta_v ** 2 * x ** 2 * math.cos(fu_angle) 
+                    den = math.pi * self.fu_density * u_x ** 2 * d_fu
+    
+                    vel = ( u_y * x ) / u_x
+                    
+                    
             time += t_incr
         
         for ox in self.ox_list:
@@ -472,7 +499,7 @@ def plot_model(Cd, p_g, p_l, u_l, u_g, d_fu, fu_angle, cup_dia, d_ox, cup_inset,
     ys = []
     xs = []
     C = 1 / dx
-   
+
     i = 0
     while i < x_1.magnitude:
         ys.append(pre_cross_flow_region(u_l, fu_angle, i * ureg("m")).magnitude)
@@ -485,7 +512,7 @@ def plot_model(Cd, p_g, p_l, u_l, u_g, d_fu, fu_angle, cup_dia, d_ox, cup_inset,
         i += dx
 
     u_y0 = u_l * math.sin(fu_angle)
- 
+
     while i < 2 * (x_1.magnitude + d_ox.magnitude):
     
         ys.append(post_cross_flow_region(Cd, p_g, p_l, u_l, u_g, d_fu, fu_angle, i * ureg("m"), u_y0).magnitude)
@@ -727,10 +754,10 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     print()
     drill_dia = {'1/64' : 0.396875 * ureg('mm'), '1/32' : 0.79375 * ureg('mm'), '1/16' : 1.5875 * ureg('mm')}
     
-    ox_cores = 7
+    ox_cores = 6
     fu_inj_per = 6
     film_cooling_orifices = 12
-    fu_inj_angle = 90
+    fu_inj_angle = 50
     
     fu_temp = 290 * ureg('kelvin')
     ox_temp = 250.15 * ureg('kelvin')
@@ -773,10 +800,10 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     
     print()
     
-    chamber_plot(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 2, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'))
+    chamber_plot(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'))
     
     test = Sim()
-    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 2, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), 10 * ureg('in/sec'), 10 * ureg('in/sec'))
+    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), 10 * ureg('in/sec'), 10 * ureg('in/sec'))
     test.simple()
     
 
