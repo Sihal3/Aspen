@@ -123,8 +123,8 @@ def within_crossflow(fu_jet, list_ox_jets):
         y_o = ox.pos_vectors[-1][1]
         z_f = fu_jet.pos_vectors[-1][2]
         z_o = ox.pos_vectors[-1][2]
-        
-        if (ox.dia[-1] / 2) <= np.abs( np.sqrt ( (x_f - x_o)**2 + (y_f - y_o)**2 + (z_f - z_o)**2)):
+      
+        if (ox.dia[-1] / 2) >= np.abs( np.sqrt ( (x_f - x_o)**2 + (y_f - y_o)**2)):
             ans = ox
             break
     return ans
@@ -171,7 +171,7 @@ class Ox_Jet(Jet):
         super().__init__(num_ox_core, num_fu_per, cup_inset, cup_ring_dia, cup_dia)
         self.id_num = id_num
         self.ox_dia = ox_dia
-        
+        self.dia.append(self.ox_dia)
         
     
     def set_origins(self):
@@ -199,7 +199,7 @@ class Fu_Jet(Jet):
         self.fu_dia = fu_dia
         self.fu_angle = fu_angle
         self.id_num = id_num
-        
+        self.dia.append(self.fu_dia)
     def set_origins(self):
         
         if self.id_num < self.num_fu_per:
@@ -250,7 +250,27 @@ class Sim:
         self.cup_inset = -1
         self.num_ox_core = -1
         self.num_fu_per = -1
+        self.Cd = .8
         
+    def area_ellipse(self, a, b):
+        return a * b * np.pi
+    
+    def y_vel_crossflow(self, t, fu_jet, ox_jet):
+        # adds the new velocity for the fuel jet
+        # also updates the direction for the jet
+        v_x = fu_jet.vel_vectors[-1][0]
+        v_y = fu_jet.vel_vectors[-1][1]
+        delta_v_z = ox_jet.vel_vectors[-1][2] - fu_jet.vel_vectors[-1][2]
+        delta_v_z *= ureg('in/s')
+        delta_v_z.ito('m/s')
+        num = 2 * np.cos(self.fu_inj_angle) * self.ox_density * delta_v_z ** 2 * self.Cd * t
+        dia = fu_jet.dia[-1]  * ureg('in')
+        dia.ito('m')
+        den = self.fu_density * np.pi * dia
+        resultant = ((num / den).magnitude) * ureg('m/s')
+        resultant.ito('in/s')
+        fu_jet.vel_vectors.append(np.array([v_x, v_y, (resultant.magnitude) + fu_jet.vel_vectors[-1][2]]))
+    
     def chamber_plot(self, chamber_dia_u, chamber_len_u, num_ox_core, cup_ring_dia_u, num_fu_per, cup_dia_u, fu_inj_angle_u, fu_inj_dia_u, ox_inj_dia_u, cup_inset_u):
     
         # strip all of the inputted dimensions of their units
@@ -417,9 +437,9 @@ class Sim:
     def simple(self):
         # Simplest model, just plot straight lines from each of the orifices
         time = 0
-        t_incr = 0.02 
+        t_incr = 0.00002 
         
-        while time < .2:
+        while time < .1:
             # start with the ox jets
             for ox in self.ox_list:
                 ox.pos_vectors.append(ox.vel_vectors[-1] * t_incr + ox.pos_vectors[-1])
@@ -428,17 +448,12 @@ class Sim:
             # then work with the fu jets 
             for fu in self.fu_list:
                 fu.pos_vectors.append(fu.vel_vectors[-1] * t_incr + fu.pos_vectors[-1])
-                fu.vel_vectors.append(np.array([0,0,0])  * t_incr + fu.vel_vectors[-1] ) # no acceleration or change in trajectory
+                
                 if within_crossflow(fu, self.ox_list):
+                    
                     ox_in_question = within_crossflow(fu, self.ox_list)
-                    delta_v = ox_in_question.vel_vectors[-1] - fu.vel_vectors[-1]
-
-                    num = Cd * self.ox_density * delta_v ** 2 * x ** 2 * math.cos(fu_angle) 
-                    den = math.pi * self.fu_density * u_x ** 2 * d_fu
-    
-                    vel = ( u_y * x ) / u_x
-                    
-                    
+                    self.y_vel_crossflow(t_incr, fu, ox_in_question)
+                
             time += t_incr
         
         for ox in self.ox_list:
@@ -754,14 +769,17 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     print()
     drill_dia = {'1/64' : 0.396875 * ureg('mm'), '1/32' : 0.79375 * ureg('mm'), '1/16' : 1.5875 * ureg('mm')}
     
-    ox_cores = 6
-    fu_inj_per = 6
+    ox_cores = 7
+    fu_inj_per = 7
     film_cooling_orifices = 12
     fu_inj_angle = 50
     
     fu_temp = 290 * ureg('kelvin')
     ox_temp = 250.15 * ureg('kelvin')
 
+    fu_v = 20 * ureg('in/sec')
+    ox_v = 120 * ureg('in/sec')
+    
     fu_inj_pressure = chamber_pressure * 1.2
     
     fu_mDot = fu_massflow(B, mDot)
@@ -803,11 +821,11 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     chamber_plot(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'))
     
     test = Sim()
-    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), 10 * ureg('in/sec'), 10 * ureg('in/sec'))
+    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), fu_v, ox_v, ox_density, fu_density)
     test.simple()
     
 
-        
+
 inj_func(massflow, B, chamber_pressure, chamber_pressure * 1.2)
 
 # chamber_plot(3.6, 12, 7, 2.2, 7, .5, np.pi /4 , .05, .25, .2)
