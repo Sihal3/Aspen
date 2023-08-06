@@ -256,11 +256,11 @@ class Sim:
             film_ys = (film_dia / 2) * np.sin(theta) + offset_y
             film_zs = 0 # flush with the injector face
             
-            plt.plot(film_xs, film_ys, film_zs, color = 'violet')
+            plt.plot(film_xs, film_ys, film_zs, color = 'black')
     
-        plt.show()
+        
             
             
     def disp(self):
-        pass
+        plt.show()
     #TODO plot the results from the simulation on the 3D graph
