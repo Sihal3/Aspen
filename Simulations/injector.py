@@ -123,13 +123,29 @@ def within_crossflow(fu_jet, list_ox_jets):
         y_o = ox.pos_vectors[-1][1]
         z_f = fu_jet.pos_vectors[-1][2]
         z_o = ox.pos_vectors[-1][2]
-      
+
         if (ox.dia[-1] / 2) >= np.abs( np.sqrt ( (x_f - x_o)**2 + (y_f - y_o)**2)):
             ans = ox
             break
     return ans
         
-        
+
+def jet_intersection(fu_jet_1, fu_jet_2):
+    fu_1_x = fu_jet_1.pos_vectors[0]
+    fu_1_y = fu_jet_1.pos_vectors[1]
+    fu_1_z = fu_jet_1.pos_vectors[2]
+    
+    
+    
+def vect_amgle(vel_vect):
+    # takes in a velocity vector and returns the angle in radians difference between the velocity vector and the normal vector to the injector
+    x = vel_vect[0]
+    y = vel_vect[1]
+    z = vel_vect[2]
+    
+    angle = np.arctan(z / (np.sqrt(x**2 + y**2)))
+    return angle
+    
 class Jet:
     
     
@@ -144,6 +160,7 @@ class Jet:
         self.dia = []
         self.vel_vectors = []
         self.ab = []
+        
 
     def plot_simple(self, color= 'blue'):
         xs = []
@@ -159,12 +176,57 @@ class Jet:
 
         plt.plot(xs, ys, zs, color = color)
 
-
+    def plot_complex(self, res, color = 'red'):
+        xs = []
+        ys = []
+        zs = []
+        
+        for pos in self.pos_vectors:
+            xs.append(pos[0])
+        for pos in self.pos_vectors:
+            ys.append(pos[1])
+        for pos in self.pos_vectors:
+            zs.append(pos[2])
+        
+        plt.plot(xs, ys, zs, color = color)
+        
+        for i in range(10, len(self.pos_vectors), res):
+            plot_rotating_circle_3d_2(self.dia[i]/2, self.vel_vectors[i], self.pos_vectors[i], color)
+            
 def normalize(v):
     norm = np.linalg.norm(v)
     if norm == 0: 
         return v
     return v / norm
+
+def fluid_vel(rho, dia, mDot):
+    area = (dia / 2) ** 2 * np.pi
+    return mDot / (rho * area)
+
+def cross_flow_region(Cd, p_g, p_l, u_l, u_g, d_fu, fu_angle, x):
+    fu_angle = math.radians(fu_angle)
+    u_y = u_l * math.sin(fu_angle)
+    u_x = u_l * math.cos(fu_angle)
+    
+    delta_u = u_g - u_y
+    
+    num = Cd * p_g * delta_u ** 2 * x ** 2 * math.cos(fu_angle) 
+    den = math.pi * p_l * u_x ** 2 * d_fu
+    
+    vel = ( u_y * x ) / u_x
+    
+    return num / den + vel
+
+
+
+
+
+
+
+
+
+
+
 
 class Ox_Jet(Jet):
     def __init__(self, id_num, num_ox_core, num_fu_per, cup_inset, cup_ring_dia, cup_dia, ox_dia):
@@ -227,7 +289,6 @@ class Fu_Jet(Jet):
         
         ang = self.fu_angle - np.radians(270) 
         psi = ((2 * np.pi) / self.num_fu_per) * fu_location
-        print(f"phi {np.degrees(psi)} fu {np.degrees(ang)}")
         direction_vector = np.array([np.cos(psi) * np.cos(ang), np.sin(psi) * np.cos(ang), np.sin(ang)])
         unit_vel = vel * normalize(direction_vector)
         self.vel_vectors.append(unit_vel)
@@ -256,6 +317,7 @@ class Sim:
         return a * b * np.pi
     
     def y_vel_crossflow(self, t, fu_jet, ox_jet):
+        # TODO Fix the way the physics works to include dimensionality for everything and encapsulate the functions that dont need them
         # adds the new velocity for the fuel jet
         # also updates the direction for the jet
         v_x = fu_jet.vel_vectors[-1][0]
@@ -263,7 +325,10 @@ class Sim:
         delta_v_z = ox_jet.vel_vectors[-1][2] - fu_jet.vel_vectors[-1][2]
         delta_v_z *= ureg('in/s')
         delta_v_z.ito('m/s')
-        num = 2 * np.cos(self.fu_inj_angle) * self.ox_density * delta_v_z ** 2 * self.Cd * t
+        
+        ang = vect_amgle(fu_jet.vel_vectors[-1])
+        
+        num = 2 * np.cos(ang) * self.ox_density * delta_v_z ** 2 * self.Cd * t
         dia = fu_jet.dia[-1]  * ureg('in')
         dia.ito('m')
         den = self.fu_density * np.pi * dia
@@ -428,11 +493,17 @@ class Sim:
             new_ox_jet.set_origins()
             new_ox_jet.set_initial_velocity(ox_vel)
             self.ox_list.append(new_ox_jet)
-        
-        print(self.fu_list[2].pos_vectors)
+
     
-    def go():
-        pass 
+    def go(self, resolution):
+        # more complicated model
+        time = 0
+        
+        ox_jet_vel = np.linalg.norm(self.ox_list[0].pos_vectors[0])
+        fu_jet_vel = np.linalg.norm(self.fu_list[0].pos_vectors[0])
+        max_vel = max()
+        
+        t_incr = 0.00001
     
     def simple(self):
         # Simplest model, just plot straight lines from each of the orifices
@@ -444,39 +515,29 @@ class Sim:
             for ox in self.ox_list:
                 ox.pos_vectors.append(ox.vel_vectors[-1] * t_incr + ox.pos_vectors[-1])
                 ox.vel_vectors.append(np.array([0,0,0]) * t_incr + ox.vel_vectors[-1]) # no acceleration or change in trajectory
-            
+                ox.dia.append(ox.dia[-1] +  ox.dia[0] * 0.0012)
             # then work with the fu jets 
             for fu in self.fu_list:
                 fu.pos_vectors.append(fu.vel_vectors[-1] * t_incr + fu.pos_vectors[-1])
-                
+                fu.dia.append(fu.dia[-1] +  fu.dia[0] * 0.001 )
                 if within_crossflow(fu, self.ox_list):
-                    
                     ox_in_question = within_crossflow(fu, self.ox_list)
                     self.y_vel_crossflow(t_incr, fu, ox_in_question)
-                
+                else:
+                    fu.vel_vectors.append(fu.vel_vectors[-1])
+            
             time += t_incr
         
         for ox in self.ox_list:
-            ox.plot_simple('red')
+            ox.plot_complex( 300, 'red')
+            
         for fu in self.fu_list:
-            fu.plot_simple()
+            fu.plot_complex(300, 'blue')
 
     def show():
         pass
 
-def cross_flow_region(Cd, p_g, p_l, u_l, u_g, d_fu, fu_angle, x):
-    fu_angle = math.radians(fu_angle)
-    u_y = u_l * math.sin(fu_angle)
-    u_x = u_l * math.cos(fu_angle)
-    
-    delta_u = u_g - u_y
-    
-    num = Cd * p_g * delta_u ** 2 * x ** 2 * math.cos(fu_angle) 
-    den = math.pi * p_l * u_x ** 2 * d_fu
-    
-    vel = ( u_y * x ) / u_x
-    
-    return num / den + vel
+
 
 
 def pre_cross_flow_region(u_l, fu_angle, x):
@@ -581,7 +642,7 @@ def plot_rotating_ellipse_3d(a, b, direction_vector, center_point, theta):
     ax.plot(x, y, z, color='b', alpha=0.6)
 
 
-def plot_rotating_circle_3d(radius, direction_vector, center):
+def plot_rotating_circle_3d(radius, direction_vector, center, color= 'black'):
     # radius is int
     # direction_vector is an np array
     # center is an np array representing a point
@@ -593,7 +654,7 @@ def plot_rotating_circle_3d(radius, direction_vector, center):
     t = np.linspace(0, 2 * np.pi, 100)
     # Generate the normal vector to the plane of the circle
     n = np.cross(direction_vector, np.array([0, 0, 1]))
-    n = n / np.linalg.norm(n)
+    n = normalize(n)
     
     # Generate the circle points in 3D space using the direction vector and normal vector
     x = center[0] + radius * (np.cos(t) * direction_vector[0] + np.sin(t) * n[0])
@@ -603,9 +664,38 @@ def plot_rotating_circle_3d(radius, direction_vector, center):
     
     
     # Plot the circle
-    ax.plot(x, y, z, color='black', alpha=0.6)
+    ax.plot(x, y, z, color=color, alpha=0.6)
 
 
+def plot_rotating_circle_3d_2(radius, direction_vector, center_point, color = 'blue'):
+    # Normalize the direction vector to ensure it is a unit vector
+    direction_vector = direction_vector / np.linalg.norm(direction_vector)
+    
+    # Generate points on the circle in 3D using parametric equations
+    t = np.linspace(0, 2 * np.pi, 100)
+    
+    # Calculate a vector orthogonal to the direction vector using cross product
+    orthogonal_vector = np.cross(direction_vector, [0, 0, 1])
+    
+    # If the direction vector is close to (0, 0, 1), use a different orthogonal vector
+    if np.allclose(orthogonal_vector, [0, 0, 0]):
+        orthogonal_vector = np.cross(direction_vector, [1, 0, 0])
+    
+    # Normalize the orthogonal vector to ensure it is a unit vector
+    orthogonal_vector = orthogonal_vector / np.linalg.norm(orthogonal_vector)
+    
+    # Calculate the normal vector to the circle plane using cross product
+    normal_vector = np.cross(direction_vector, orthogonal_vector)
+    
+    # Generate the circle points in 3D space using the rotated direction vector and center point
+    circle_points = center_point[:, None] + radius * (orthogonal_vector[:, None] * np.cos(t) + normal_vector[:, None] * np.sin(t))
+    
+    # Create a 3D plot
+
+    # Plot the circle
+    ax.plot(circle_points[0], circle_points[1], circle_points[2], color=color, alpha=.6)
+    
+    # Plot the circle
 
 
 
@@ -761,7 +851,7 @@ def plot_ox(num_ox_core, cup_ring_dia_u, cup_inset_u, chamber_len_u):
         zs = np.array(zs)
         print(xs , ys, zs)
         plt.plot(xs,ys,zs, color='red')
-        
+
 
 
 
@@ -770,7 +860,7 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     drill_dia = {'1/64' : 0.396875 * ureg('mm'), '1/32' : 0.79375 * ureg('mm'), '1/16' : 1.5875 * ureg('mm')}
     
     ox_cores = 7
-    fu_inj_per = 7
+    fu_inj_per = 6
     film_cooling_orifices = 12
     fu_inj_angle = 50
     
@@ -811,17 +901,26 @@ def inj_func(mDot, B, chamber_pressure, ign_chamber_press):
     element_fu_dia = incompressible_orifice(Cd, fu_density, element_fu_mDot, fu_inj_pressure, chamber_pressure).to_base_units()
     element_ox_dia = incompressible_orifice(Cd, ox_density, element_ox_mDot, fu_inj_pressure, chamber_pressure).to_base_units()
     print(f"Ethanol diameter with {fu_inj_per} elements per ox core: {element_fu_dia.to(ureg.inch):.3f}")
+    print(f"                                              {element_fu_dia.to(ureg.mm):.3f}")
     print(f"Nitrous diameter with {ox_cores} elements: {element_ox_dia.to(ureg.inch):.3f}")
+    print(f"                                  {element_ox_dia.to(ureg.mm):.3f}")
     
     film_cooling_dia = incompressible_orifice(Cd, fu_density, film_cooling_mDot / film_cooling_orifices, fu_inj_pressure, chamber_pressure)
     print(f"Film cooling diameter for {film_cooling_orifices} elements: {film_cooling_dia.to_base_units().to(ureg.inch):.3f}")
+    print(f"                                       {film_cooling_dia.to_base_units().to(ureg.mm):.3f}")
     
+    fu_vel = fluid_vel(fu_density, element_fu_dia, element_fu_mDot)
+    ox_vel = fluid_vel(ox_density, element_ox_dia, element_ox_mDot)
+    
+    print()
+    print(f'Ethanol jet velocity = {fu_vel:.3f}')
+    print(f'Nitrous jet velocity = {ox_vel:.3f}')
     print()
     
     chamber_plot(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'))
     
     test = Sim()
-    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), fu_v, ox_v, ox_density, fu_density)
+    test.create_scenario(3.5 * ureg('inch'), 12 * ureg('inch'), ox_cores, 2 * ureg('inch'), fu_inj_per, element_ox_dia.to(ureg.inch) * 1.5, fu_inj_angle * ureg('degree'), element_fu_dia.to(ureg.inch), element_ox_dia.to(ureg.inch), .25 * ureg('inch'), fu_vel.to(ureg.inch / ureg.sec), ox_vel.to(ureg.inch / ureg.sec), ox_density, fu_density)
     test.simple()
     
 
