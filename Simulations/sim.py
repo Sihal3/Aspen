@@ -52,20 +52,29 @@ class Sim:
         self.cup_inset_u = calc_data['cup_inset_u']
         self.fu_angle_u = calc_data['fu_angle_u']
         self.cup_dia_u = calc_data['cup_dia_u']
-        
+        self.res = calc_data['res']
         
         
         for ox_id in range(self.num_ox_core):
-            Ox_Jet(ox_id, calc_data)
+            ox_jet = Ox_Jet(ox_id, calc_data)
+            ox_jet.set_initial_velocity()
+            ox_jet.set_origins()
+            ox_jet.set_acc()
+            
+            self.ox_list.append(ox_jet)
         
-    
+        for fu_id in range(self.fu_elements_total):
+            fu_jet = Fu_Jet(fu_id, calc_data)
+            fu_jet.set_origins()
+            fu_jet.set_initial_velocity()
+            fu_jet.set_acc()
+            
+            self.fu_list.append(fu_jet)
+            
     #TODO make the create scene function take in and set all the variables in the package
     #TODO and fill the list of the fu and ox jets 
 
-    def go(self):
-        pass
-    #TODO run the simulation without plotting
-    
+
     def normalize(self, v):
         norm = np.linalg.norm(v)
         if norm == 0: 
@@ -259,8 +268,42 @@ class Sim:
             plt.plot(film_xs, film_ys, film_zs, color = 'black')
     
         
+    def go(self):
+        
+        t_incr = 1 / self.res
+        time = 0
+        
+        while(time < .01):
+            # physics section of the code
+            for fu in self.fu_list:
+                fu.pos_vectors.append(fu.vel_vectors[-1] * t_incr + fu.pos_vectors[-1])
+                fu.vel_vectors.append(fu.acc_vectors[-1] * t_incr + fu.vel_vectors[-1])
+                fu.acc_vectors.append(np.array([0, 0, 9.8]))
+
+
+            for ox in self.ox_list:
+                
+                ox.pos_vectors.append(ox.vel_vectors[-1] * t_incr + ox.pos_vectors[-1])
+                ox.vel_vectors.append(ox.acc_vectors[-1] * t_incr + ox.vel_vectors[-1])
+                ox.acc_vectors.append(np.array([0, 0, 9.8]))
+
             
             
+            
+            
+            time += t_incr
+
+        
+    #TODO run the simulation without plotting
+
+
     def disp(self):
+        
+        for fu in self.fu_list:
+            fu.plot_simple()
+        
+        for ox in self.ox_list:
+            ox.plot_simple('red')
+        
         plt.show()
     #TODO plot the results from the simulation on the 3D graph

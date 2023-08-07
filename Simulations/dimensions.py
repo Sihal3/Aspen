@@ -53,7 +53,7 @@ def calc(inputs):
     film_wall_distance_u = inputs['film_wall_distance_u']
     num_ox_core = inputs['num_ox_core']
     fu_angle_u = inputs['fu_angle_u']
-    
+    res = inputs['res']
     
     # convert the film_wall_dist to a diameter for the film cooling ring
     film_cool_ring_u = chamber_dia_u - (2 * film_wall_distance_u)
@@ -151,7 +151,8 @@ def calc(inputs):
             'chamber_len_u' : chamber_len_u,
             'film_ring_dia_u' : film_cool_ring_u,
             'fu_angle_u' : fu_angle_u,
-            'cup_dia_u' : cup_dia_u}
+            'cup_dia_u' : cup_dia_u,
+            'res' : res}
     
     return ans
 

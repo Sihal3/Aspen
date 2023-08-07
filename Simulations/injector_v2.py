@@ -31,7 +31,7 @@ chamber_dia = 3
 chamber_len = 10 # length of the chamber
 film_wall_distance = 0.1 # distance from the wall to a film cooling orifice
 num_ox_core = 7     # set the number of oxidizer injectors because I am too lazy to make it automated    
-
+res = 5000 # resolution for the simulation
 
 
 # Adding units to the inputs and converting to SI
@@ -84,7 +84,8 @@ package = { 'mDot_u' : massflow_u,
             'chamber_dia_u' : chamber_dia_u,
             'chamber_len_u' : chamber_len_u,
             'film_wall_distance_u' : film_wall_distance_u,
-            'num_ox_core' : num_ox_core}
+            'num_ox_core' : num_ox_core,
+            'res' : res}
 
 
 out = dimensions.calc(package)
