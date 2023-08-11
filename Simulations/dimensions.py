@@ -152,7 +152,8 @@ def calc(inputs):
             'film_ring_dia_u' : film_cool_ring_u,
             'fu_angle_u' : fu_angle_u,
             'cup_dia_u' : cup_dia_u,
-            'res' : res}
+            'res' : res,
+            'inj_pressure_u' : inj_pressure_u}
     
     return ans
 

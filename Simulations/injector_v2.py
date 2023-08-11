@@ -19,19 +19,19 @@ Q_ = ureg.Quantity
 massflow = 2.2
 o_f_ratio = 1.2
 chamber_pressure = 180
-film_cooling_percentage = .15
+film_cooling_percentage = .18
 fuel = 'Ethanol'
 oxidizer = 'N2O'
-fu_inj_angle = 50
+fu_inj_angle = 60
 fu_temp = 270
 ox_temp = 260
 cup_inset = .2
-cup_ring_dia = 1.5 
+cup_ring_dia = 1.8 
 chamber_dia = 3
 chamber_len = 10 # length of the chamber
 film_wall_distance = 0.1 # distance from the wall to a film cooling orifice
 num_ox_core = 7     # set the number of oxidizer injectors because I am too lazy to make it automated    
-res = 5000 # resolution for the simulation
+res = 50000 # resolution for the simulation
 
 
 # Adding units to the inputs and converting to SI

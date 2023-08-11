@@ -7,13 +7,14 @@ from dimensions import ureg
 
 from ox_jet import Ox_Jet
 from fu_jet import Fu_Jet
-
+from film_jet import Film_Jet
 
 
 class Sim:
     def __init__(self):
         self.fu_list = []
         self.ox_list = []
+        self.film_list = []
 
         plt.rcParams['figure.figsize'] = (10,10)
         self.ax = plt.axes(projection='3d')
@@ -53,6 +54,7 @@ class Sim:
         self.fu_angle_u = calc_data['fu_angle_u']
         self.cup_dia_u = calc_data['cup_dia_u']
         self.res = calc_data['res']
+        self.inj_pressure_u = calc_data['inj_pressure_u']
         
         
         for ox_id in range(self.num_ox_core):
@@ -60,6 +62,9 @@ class Sim:
             ox_jet.set_initial_velocity()
             ox_jet.set_origins()
             ox_jet.set_acc()
+            ox_jet.add_phase()
+            ox_jet.add_temp(self.ox_temp_u.magnitude)
+            
             
             self.ox_list.append(ox_jet)
         
@@ -68,9 +73,24 @@ class Sim:
             fu_jet.set_origins()
             fu_jet.set_initial_velocity()
             fu_jet.set_acc()
+            fu_jet.add_phase()
+            fu_jet.add_temp(self.fu_temp_u.magnitude)
+            
+            
             
             self.fu_list.append(fu_jet)
             
+        for film_id in range(self.num_film):
+            film_jet = Film_Jet(film_id, calc_data)
+            film_jet.set_origins()
+            film_jet.set_initial_velocity()
+            film_jet.set_acc()
+            film_jet.add_phase()
+            film_jet.add_temp(self.fu_temp_u.magnitude) # assume that initial film cooling temp is same as fu
+            
+            self.film_list.append(film_jet)
+        
+        
     #TODO make the create scene function take in and set all the variables in the package
     #TODO and fill the list of the fu and ox jets 
 
@@ -267,29 +287,91 @@ class Sim:
             
             plt.plot(film_xs, film_ys, film_zs, color = 'black')
     
+    def within_crossflow(self, fu_jet, list_ox_jets):
+        ans = False
+        for ox in list_ox_jets:
+            x_f = fu_jet.pos_vectors[-1][0]
+            x_o = ox.pos_vectors[-1][0]
+            y_f = fu_jet.pos_vectors[-1][1]
+            y_o = ox.pos_vectors[-1][1]
+            z_f = fu_jet.pos_vectors[-1][2]
+            z_o = ox.pos_vectors[-1][2]
+
+            if (ox.dia[-1] / 2) >= np.abs( np.sqrt ( (x_f - x_o)**2 + (y_f - y_o)**2)):
+                ans = ox
+                break
+        return ans
+    
+    def column_breakup_location(self, fu_jet):
+        # based off of 'Atomization and Sprays' Wu et al model for the location of the CBL
+        #   at x = 8 * d_jet
+        # dont know if there are impacts from the jet being angled
+        if fu_jet.cbl >= (fu_jet.dia[-1] * 8):
+            fu_jet.atomize_it()
+    
+    def dist_in_jet(self, fu_jet, ox_jet):
+        x_f = fu_jet.pos_vectors[-1][0]
+        x_o = ox_jet.pos_vectors[-1][0]
+        y_f = fu_jet.pos_vectors[-1][1]
+        y_o = ox_jet.pos_vectors[-1][1]
         
+        dist_from_center = np.sqrt((x_f - x_o) ** 2 + (y_f - y_o) ** 2) 
+        
+        
+    
     def go(self):
         
         t_incr = 1 / self.res
         time = 0
         
-        while(time < .01):
+        while(time < .006):
             # physics section of the code
             for fu in self.fu_list:
                 fu.pos_vectors.append(fu.vel_vectors[-1] * t_incr + fu.pos_vectors[-1])
                 fu.vel_vectors.append(fu.acc_vectors[-1] * t_incr + fu.vel_vectors[-1])
-                fu.acc_vectors.append(np.array([0, 0, 9.8]))
-
+                grav_acc = np.array([0, 0, 9.8])
+                
+                ox_jet = self.within_crossflow(fu, self.ox_list)
+                if ox_jet:
+                    fu.compound_cbl(t_incr)
+                    self.column_breakup_location(fu)
+                    drag_acc = fu.calc_cross_traj(ox_jet)
+                else:
+                    drag_acc = np.array([0, 0, 0])
+                
+                total_acc = grav_acc + drag_acc
+                
+                fu.acc_vectors.append(total_acc)
+                fu.add_dia(fu.dia[-1])
+                fu.add_temp(fu.temp[-1])
+                fu.add_density()
+                
+                
+                
+                fu.add_phase()
+                
 
             for ox in self.ox_list:
                 
                 ox.pos_vectors.append(ox.vel_vectors[-1] * t_incr + ox.pos_vectors[-1])
                 ox.vel_vectors.append(ox.acc_vectors[-1] * t_incr + ox.vel_vectors[-1])
                 ox.acc_vectors.append(np.array([0, 0, 9.8]))
+                ox.add_dia(ox.dia[-1] * 1.01)
+                ox.add_temp(ox.temp[-1])
+                ox.add_density()
+                
+                ox.add_phase()
 
-            
-            
-            
+
+            for film in self.film_list:
+                film.pos_vectors.append(film.vel_vectors[-1] * t_incr + film.pos_vectors[-1])
+                film.vel_vectors.append(film.acc_vectors[-1] * t_incr + film.vel_vectors[-1])
+                film.acc_vectors.append(np.array([0, 0, 9.8]))
+                film.add_dia(film.dia[-1])
+                film.add_temp(film.temp[-1])
+                film.add_density()
+                
+                film.add_phase()
             
             time += t_incr
 
@@ -300,10 +382,13 @@ class Sim:
     def disp(self):
         
         for fu in self.fu_list:
-            fu.plot_simple()
+            fu.plot_complex(int(self.res / 8000))
         
         for ox in self.ox_list:
-            ox.plot_simple('red')
+            ox.plot_complex(int(self.res / 10000),'red')
+            
+        for film in self.film_list:
+            film.plot_complex(int(self.res / 1000), 'green')
         
         plt.show()
     #TODO plot the results from the simulation on the 3D graph

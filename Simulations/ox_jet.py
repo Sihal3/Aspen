@@ -1,6 +1,6 @@
 import numpy as np
 from jet import Jet
-
+import CoolProp.CoolProp as CP
 from dimensions import ureg
 
 class Ox_Jet(Jet):
@@ -8,9 +8,25 @@ class Ox_Jet(Jet):
         super().__init__(package)
         self.package = package
         
-        self.dia.append(package['ox_dia_u'])
+        self.dia.append(package['ox_dia_u'].magnitude)
         self.id_num = id_num
+        self.ox_temp = package['ox_temp_u'].magnitude
+        self.oxidizer = package['oxidizer']
+        self.inj_pressure = package['inj_pressure_u'].magnitude
         
+    def add_density(self):
+        den = CP.PropsSI('D', 'T', self.temp[-1], 'P', self.package['chamber_pressure_u'].magnitude, self.oxidizer)
+        self.density.append(den)
+    
+    
+    def add_phase(self):
+        phase = CP.PhaseSI("P", self.inj_pressure, "T", self.ox_temp, self.oxidizer)
+        
+        if phase == "liquid":
+            self.phase.append(1)
+        else:
+            self.phase.append(0) # assuming it can either be gas or liq
+
     
     def set_origins(self):
         # sets the initial positions for the jets 
@@ -36,3 +52,6 @@ class Ox_Jet(Jet):
         vel = self.package['ox_vel_u']
         self.vel_vectors.append(np.array([0, 0, vel.magnitude]))
     
+    def calc_expansion(self):
+        #TODO Update the diameter for the jet based on its position
+        pass
